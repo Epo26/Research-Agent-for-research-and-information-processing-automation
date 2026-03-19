@@ -1,0 +1,15 @@
+.env
+
+.venv/
+venv/
+env/
+
+mlruns/
+mlflow.db
+
+final_report.txt
+
+__pycache__/
+*.py[cod]
+*$py.class
+.idea/
