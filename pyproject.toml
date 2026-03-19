@@ -20,6 +20,7 @@ dependencies = [
     "pymupdf",
     "pypdf>=6.9.1",
     "python-dotenv>=1.2.1",
+    "pyyaml>=6.0.3",
     "wikipedia>=1.4.0",
     "xmltodict>=1.0.4",
 ]

@@ -1,8 +1,10 @@
 from graph import create_agent_graph
 from tools_and_nodes import llm_smart, llm_judge
 import mlflow
+import yaml
 
-
+with open("config.yaml", "r", encoding="utf-8") as file:
+    CONFIG = yaml.safe_load(file)
 
 agent = create_agent_graph()
 
@@ -28,6 +30,8 @@ if __name__ == "__main__":
         mlflow.log_param("model", llm_smart.model_name)
         mlflow.log_param("temperature", llm_smart.temperature)
         mlflow.log_param("topic", user_input)
+        mlflow.log_dict(CONFIG, "config.yaml")
+        mlflow.log_artifact("prompts.yaml")
 
         result = agent.invoke(initial_state)
 

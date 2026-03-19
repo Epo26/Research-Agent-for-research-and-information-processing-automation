@@ -214,6 +214,7 @@ dependencies = [
     { name = "pymupdf" },
     { name = "pypdf" },
     { name = "python-dotenv" },
+    { name = "pyyaml" },
     { name = "wikipedia" },
     { name = "xmltodict" },
 ]
@@ -235,6 +236,7 @@ requires-dist = [
     { name = "pymupdf" },
     { name = "pypdf", specifier = ">=6.9.1" },
     { name = "python-dotenv", specifier = ">=1.2.1" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "wikipedia", specifier = ">=1.4.0" },
     { name = "xmltodict", specifier = ">=1.0.4" },
 ]

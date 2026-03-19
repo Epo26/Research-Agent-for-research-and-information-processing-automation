@@ -10,23 +10,30 @@ from langchain_community.retrievers import PubMedRetriever
 from pypdf import PdfReader
 
 
+with open("config.yaml", "r", encoding="utf-8") as file:
+    CONFIG = yaml.safe_load(file)
+
+with open("prompts.yaml", "r", encoding="utf-8") as file:
+    PROMPTS = yaml.safe_load(file)
+
+
 load_dotenv()
 
 arxiv_wrapper = ArxivAPIWrapper(top_k_results=2)
 
 llm_cheap = llm_smart = ChatGroq(
-    model="llama-3.1-8b-instant",
-    temperature=0.2
+    model= CONFIG["llm"]["cheap_model"],
+    temperature= CONFIG["llm"]["cheap_temperature"]
 )
 
 llm_smart = ChatGroq(
-    model="llama-3.3-70b-versatile",
-    temperature=0.1
+    model= CONFIG["llm"]["smart_model"],
+    temperature= CONFIG["llm"]["smart_temperature"]
 )
 
 llm_judge = ChatGroq(
-    model="llama-3.3-70b-versatile",
-    temperature=0.1
+    model= CONFIG["llm"]["judge_model"],
+    temperature= CONFIG["llm"]["judge_temperature"]
 )
 
 class AgentState(TypedDict):
@@ -46,22 +53,18 @@ def perspective_generation_node(state: AgentState):
     print("Generating research perspectives...")
     topic = state["topic"]
 
-    prompt = f"""
-    You are an expert academic editor planning a comprehensive, Wikipedia-style article on the topic: '{topic}'.
-    Identify from 5 essential and distinct perspectives (or sub-topics) that MUST be researched to provide a complete overview.
-    For example, if the topic is 'Large Language Models', perspectives might be 'Core Architecture', 'Ethical Implications', and 'Real-world Applications'.
+    prompt_template = PROMPTS["nodes_prompts"]["perspective_generation_prompt"]
+    prompt = prompt_template.format(topic=topic)
 
-    Return ONLY 5 of the perspectives, one per line. Do not use bullet points or extra text.
-    """
+
     response = llm_cheap.invoke(prompt)
-    perspectives = [p.strip() for p in response.content.split('\n') if p.strip()][:5]
+
+    limit = CONFIG["search"]["max_perspectives"]
+    perspectives = [p.strip() for p in response.content.split('\n') if p.strip()][:limit]
 
     print(f"   Identified Perspectives:\n" + "\n".join([f"   - {p}" for p in perspectives]))
     return {"perspectives": perspectives}
 
-
-import json
-import re
 
 
 def query_expansion_node(state: AgentState):
@@ -71,29 +74,9 @@ def query_expansion_node(state: AgentState):
 
     perspectives_text = "\n".join([f"- {p}" for p in perspectives])
 
-    prompt = f"""
-    You are an expert academic librarian. Your task is to generate search queries for the topic: {topic}.
+    prompt_template = PROMPTS["nodes_prompts"]["query_expansion_prompt"]
+    prompt = prompt_template.format(topic=topic,perspectives_text=perspectives_text)
 
-    Here are the specific perspectives you need to cover:
-    {perspectives_text}
-
-    CRITICAL RULES FOR SEARCH QUERIES:
-    1. Generate exactly ONE search query for EACH perspective provided above.
-    2. Keep queries EXTREMELY SIMPLE (maximum 3-4 keywords).
-    3. DO NOT use boolean operators (AND, OR, NOT).
-    4. DO NOT use parentheses (). 
-    5. ArXiv's API will crash if the query is too complex. 
-
-    Good example query: "LoRA memory efficiency LLM"
-    Bad example query: "(LoRA OR QLoRA) AND (memory) AND (LLM)"
-
-    Return ONLY a valid JSON list of strings. Do not include markdown formatting like ```json.
-    Format example:
-    [
-      "keyword1 keyword2 keyword3",
-      "keyword4 keyword5 keyword6"
-    ]
-    """
 
     try:
         response = llm_cheap.invoke(prompt)
@@ -124,10 +107,11 @@ def search_arxiv(state: AgentState):
     all_papers = []
     seen_ids = set()
 
+
     for query in queries:
         print(f"   -> Executing: {query}")
         try:
-            search = arxiv.Search(query=query, max_results=2)
+            search = arxiv.Search(query=query, max_results= CONFIG["search"]["max_arxiv_results"])
             for result in search.results():
                 if result.entry_id not in seen_ids:
                     seen_ids.add(result.entry_id)
@@ -150,20 +134,17 @@ def relevance_filter_node(state: AgentState):
     topic = state["topic"]
     raw_papers = state["raw_papers"]
     filtered = []
+    crop_len = CONFIG["search"]["abstract_crop_length"]
 
     if not raw_papers:
         return {"filtered_papers": []}
 
     for paper in raw_papers:
 
-        prompt = f"""
-        Topic: {topic}
-        Paper Title: {paper['title']}
-        Paper Abstract: {paper['summary'][:1000]}...
 
-        Is this paper highly relevant to the topic? 
-        Answer ONLY 'YES' or 'NO'.
-        """
+        prompt_template = PROMPTS["nodes_prompts"]["relevance_filter_prompt"]
+        prompt = prompt_template.format(topic=topic, paper_title=paper["title"], paper_summary=paper['summary'][:crop_len])
+
         response = llm_cheap.invoke(prompt)
 
         if "YES" in response.content.upper():
@@ -193,23 +174,8 @@ def synthesis_node(state: AgentState):
         context += f"--- SOURCE [{i}] ---\nTitle: {p['title']}\nAuthors: {', '.join(p['authors'])}\nAbstract: {p['summary']}\n\n"
         references_list += f"[{i}] {', '.join(p['authors'])}. \"{p['title']}\".\n"
 
-    prompt = f"""
-    You are an expert academic writer and researcher. Your task is to write a comprehensive academic summary on the topic: '{topic}'.
-
-    CRITICAL RULES:
-    1. You MUST use ONLY the information provided in the sources below. Do not use any external knowledge.
-    2. Every factual claim, sentence, or methodology you mention MUST be immediately followed by an inline citation using the source ID, like [1] or [2, 3].
-    3. If the sources do not contain enough information to cover a sub-topic, explicitly state "The provided literature does not cover this aspect." Do not invent information.
-    4. Maintain a formal, objective, and academic tone.
-
-    AVAILABLE SOURCES:
-    {context}
-
-    Structure the report with the following sections:
-    - Introduction
-    - Key Findings & Methodologies
-    - Limitations & Future Directions
-    """
+    prompt_template = PROMPTS["nodes_prompts"]["synthesis_prompt"]
+    prompt = prompt_template.format(topic=topic, context=context)
 
     response = llm_smart.invoke(prompt)
 
@@ -227,6 +193,9 @@ def evaluator_node(state: AgentState):
     sources = str(state.get("filtered_papers", ""))
     topic = state.get("topic", "")
 
+    strict_thr = CONFIG["evaluation"]["strict_threshold"]
+    std_thr = CONFIG["evaluation"]["standard_threshold"]
+
     results = evaluate_all_metrics_super_judge(llm_smart, sources, draft, topic)
 
     feedback = []
@@ -236,7 +205,7 @@ def evaluator_node(state: AgentState):
         print(f'  Metric: {metric_name}  |  Score: {score}\n   Response: {error_text}')
         mlflow.log_metric(metric_name, score, step=revision)
 
-        threshold = 0.9 if metric_name in ["faithfulness", "statistical_factuality"] else 0.8
+        threshold = strict_thr if metric_name in ["faithfulness", "statistical_factuality"] else std_thr
         if score < threshold:
             feedback.append(f"- {metric_name.replace('_', ' ').title()}: {error_text}")
 
@@ -260,21 +229,8 @@ def reviser_node(state: AgentState):
     feedback = state.get("evaluation_feedback", "No feedback.")
     sources = str(state.get("filtered_papers", ""))
 
-    prompt = f"""
-    You are an expert academic writer. You wrote a draft report, but the reviewers (judges) found mistakes.
-
-    Source Documents:
-    {sources}
-
-    Your Draft Report:
-    {draft}
-
-    Reviewer Feedback / Errors to fix:
-    {feedback}
-
-    Task: Rewrite the draft report to fix ALL the errors mentioned by the reviewers. 
-    Ensure you maintain an academic tone and accurately cite the source documents.
-    """
+    prompt_template = PROMPTS["nodes_prompts"]["reviser_prompt"]
+    prompt = prompt_template.format(sources=sources, draft=draft,feedback=feedback)
 
     response = llm_smart.invoke([HumanMessage(content=prompt)])
 
@@ -284,7 +240,8 @@ def check_quality(state: AgentState):
     feedback = state.get("evaluation_feedback", "")
     revisions = state.get("revision_count", 0)
 
-    if revisions >= 3:
+
+    if revisions >= CONFIG["evaluation"]["max_revisions"]:
         print("🛑 Limit of tries is reached. Final answer:")
         return "end_process"
 
