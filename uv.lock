@@ -195,15 +195,11 @@ wheels = [
 ]
 
 [[package]]
-name = "bakalarka"
+name = "research_agent"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "arxiv" },
-    { name = "ddgs" },
-    { name = "duckduckgo-search" },
-    { name = "grandalf" },
-    { name = "ipykernel" },
     { name = "langchain", extra = ["anthropic"] },
     { name = "langchain-community" },
     { name = "langchain-google-genai" },

@@ -1,13 +1,8 @@
 from langgraph.graph import StateGraph, START, END
-from tools_and_nodes import (AgentState,
-perspective_generation_node,
-query_expansion_node,
-search_arxiv,
-relevance_filter_node,
-synthesis_node,
-evaluator_node,
-reviser_node,
-check_quality)
+from .models import AgentState
+from .nodes.research import perspective_generation_node, query_expansion_node, search_arxiv, relevance_filter_node
+from .nodes.synthesis import synthesis_node, reviser_node
+from .nodes.evaluation import evaluator_node, check_quality
 
 
 

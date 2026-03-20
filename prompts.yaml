@@ -45,7 +45,7 @@ nodes_prompts:
       2. Every factual claim, sentence, or methodology you mention MUST be immediately followed by an inline citation using the source ID, like [1] or [2, 3].
       3. If the sources do not contain enough information to cover a sub-topic, explicitly state "The provided literature does not cover this aspect." Do not invent information.
       4. Maintain a formal, objective, and academic tone.
-  
+      
       AVAILABLE SOURCES:
       {context}
   
