@@ -1,41 +1,119 @@
-# Academic Research Agent (Bachelor's Thesis)
+# Research Agent
 
-An automated AI-driven pipeline designed to conduct academic research, synthesize literature reviews, and rigorously evaluate the generated content using strict scientific metrics. Built with **LangGraph**, **LangChain**, and **MLflow**.
+An AI-driven pipeline that conducts academic research, synthesizes citation-aware literature reviews, and evaluates the output using strict scientific metrics. Built with **LangGraph**, **Google Gemini**, and **MLflow**.
 
-## Project Overview
+## Quick start
 
-This project automates the literature review process for academic research. Given a user topic, the agent dynamically generates research perspectives, queries the **ArXiv database**, filters relevant papers, synthesizes a citation-aware report, and uses an LLM-as-a-Judge mechanism (ReAct pattern) to self-correct hallucinations or factual inaccuracies.
+### 1. Prerequisites
 
-### Key Features
-* **Multi-Agent Workflow:** Orchestrated using LangGraph for stateful, cyclic execution.
-* **Hybrid LLM Routing:** Uses cost-effective models (`llama-3.1-8b-instant`) for simple tasks and high-reasoning models (`llama-3.3-70b-versatile`) for synthesis and evaluation.
-* **Scientific Super-Judge:** Evaluates drafts across 6 strict metrics:
-  1. *Faithfulness (Hallucination Check)*
-  2. *Key Claim Recall*
-  3. *Topic Relevance*
-  4. *Methodological Completeness*
-  5. *Statistical Factuality*
-  6. *Contradiction Recognition*
-* **Self-Correction (ReAct):** Automatically rewrites the draft if quality thresholds (e.g., $<0.9$ for factuality) are not met.
-* **MLOps Integration:** Fully integrated with **MLflow** to track metrics, parameters, and prompt versions for A/B testing and reproducibility.
+- Python 3.13+
+- [uv](https://docs.astral.sh/uv/) package manager (recommended) or pip
+- A Google Gemini API key ([get one here](https://aistudio.google.com/apikey))
+
+### 2. Installation
+
+```bash
+git clone https://github.com/Epo26/Research-Agent-for-research-and-information-processing-automation.git
+cd Research-Agent-for-research-and-information-processing-automation
+
+# Create virtual environment and install dependencies
+uv sync
+
+# Or with pip
+python -m venv .venv
+.venv\Scripts\activate   # Windows
+# source .venv/bin/activate  # Linux/macOS
+pip install -e .
+```
+
+### 3. Configuration
+
+Create a `.env` file in the project root:
+
+```
+GOOGLE_API_KEY=your_gemini_api_key_here
+```
+
+Model parameters, search settings, and evaluation thresholds are configured in `config.yaml`.  
+Prompts are externalized in `prompts.yaml`.
+
+### 4. Run the agent on a single topic
+
+```bash
+python main.py "Mitigation strategies for hallucination in LLMs using knowledge graphs"
+```
+
+Or run interactively (you will be prompted to enter a topic):
+
+```bash
+python main.py
+```
+
+The generated report is printed to the console and saved to `final_report.txt`.
+
+### 5. Run the full dataset evaluation (with MLflow tracking)
+
+Start the MLflow server first:
+
+```bash
+mlflow server --host 127.0.0.1 --port 5000
+```
+
+Then run the evaluation:
+
+```bash
+python run_dataset.py
+```
+
+This processes all 20 topics from `dataset.yaml`, logs metrics and artifacts to MLflow, and generates visualization plots (revision histogram, metrics heatmap, min/mean/max summary).
+
+Open `http://127.0.0.1:5000` in a browser to explore the results.
+
+
+### Evaluation metrics
+
+The LLM Judge scores every report on 6 dimensions:
+
+| Metric | Threshold | Description |
+|--------|-----------|-------------|
+| Faithfulness | 0.9 (strict) | No claims unsupported by sources |
+| Statistical Factuality | 0.9 (strict) | Numerical data matches sources |
+| Key Claim Recall | 0.8 | Important findings are covered |
+| Topic Relevance | 0.8 | Report stays on-topic |
+| Methodological Completeness | 0.8 | Methods from sources are described |
+| Contradiction Recognition | 0.8 | Conflicting findings are noted |
+
+If any metric falls below its threshold, the report is sent back to the Reviser for correction (up to 3 revision cycles).
+
+### Hybrid LLM routing
+
+The system uses two model tiers to balance cost and quality:
+
+- **Gemini 2.5 Flash** (cheap) — perspective generation, query expansion, relevance filtering
+- **Gemini 2.5 Pro** (smart) — report synthesis, revision, and evaluation
 
 ---
 
-## Project Architecture
+## Project structure
 
-```text
-research_agent/
-├── __init__.py
-├── config.py             # Loads config.yaml & prompts.yaml
-├── models.py             # Dataclasses (Paper) and TypedDict (AgentState)
-├── llm.py                # LLM initializations (Groq API)
-├── nodes/                # LangGraph Nodes
-│   ├── research.py       # Perspective generation, Query expansion, ArXiv search
-│   ├── synthesis.py      # Report drafting and Reviser logic
-│   └── evaluation.py     # Super-Judge evaluation and conditional routing
-├── metrics/
-│   └── evaluators.py     # Complex scientific metric prompts and parsers
-├── graph.py              # LangGraph compilation
-├── prompts.yaml          # Externalized system prompts
-├── config.yaml           # Hyperparameters (thresholds, max results, etc.)
-└── main.py               # Entry point and MLflow tracking setup
+```
+├── main.py                 # Single-topic entry point
+├── run_dataset.py          # Batch evaluation with MLflow tracking and plots
+├── config.yaml             # Model parameters and thresholds
+├── prompts.yaml            # All LLM prompts
+├── dataset.yaml            # 20 evaluation topics
+├── pyproject.toml          # Dependencies
+├── .env.example            # API key template
+└── reserch_agent/
+    ├── config.py            # YAML config loader
+    ├── models.py            # Paper dataclass and AgentState TypedDict
+    ├── llm.py               # LLM initialization (Google Gemini)
+    ├── graph.py             # LangGraph state machine definition
+    ├── utils.py             # Token tracking and fault-tolerant API wrapper
+    ├── nodes/
+    │   ├── research.py      # Perspective generation, query expansion, ArXiv search, filtering
+    │   ├── synthesis.py     # Report synthesis and revision
+    │   └── evaluation.py    # LLM Judge and quality gate routing
+    └── metrics/
+        └── evaluators.py    # Super-judge prompt and JSON response parser
+```

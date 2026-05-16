@@ -3,6 +3,7 @@ from langchain_core.messages import HumanMessage
 from ..llm import llm_smart
 from ..models import AgentState, Paper
 from ..config import PROMPTS, CONFIG
+from ..utils import update_token_usage, safe_invoke
 
 logger = logging.getLogger(__name__)
 
@@ -26,11 +27,12 @@ def synthesis_node(state: AgentState):
     prompt_template = PROMPTS["nodes_prompts"]["synthesis_prompt"]
     prompt = prompt_template.format(topic=topic, context=context)
 
-    response = llm_smart.invoke(prompt)
+    response = safe_invoke(llm_smart, prompt)
 
     report_text = response.content + references_list
 
-    return {"draft_report": report_text}
+    token_updates = update_token_usage(state, response, "smart")
+    return {"draft_report": report_text, **token_updates}
 
 
 def reviser_node(state: AgentState):
@@ -43,6 +45,7 @@ def reviser_node(state: AgentState):
     prompt_template = PROMPTS["nodes_prompts"]["reviser_prompt"]
     prompt = prompt_template.format(sources=sources, draft=draft,feedback=feedback)
 
-    response = llm_smart.invoke([HumanMessage(content=prompt)])
+    response = safe_invoke(llm_smart, [HumanMessage(content=prompt)])
 
-    return {"draft_report": response.content}
+    token_updates = update_token_usage(state, response, "smart")
+    return {"draft_report": response.content, **token_updates}

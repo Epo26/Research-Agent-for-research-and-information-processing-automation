@@ -1,19 +1,36 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# LLM configuration
+# cheap  → fast model for high-volume, low-complexity calls
+#           (perspective generation, query expansion, relevance filtering)
+# smart  → strongest model for report synthesis and revision
+# judge  → same strong model; low temperature for deterministic evaluation
+# ──────────────────────────────────────────────────────────────────────────────
 llm:
-  cheap_model: llama-3.1-8b-instant
-  cheap_temperature: 0.2
+  cheap_model: gemini-2.5-flash
+  cheap_temperature: 0.3        # slight creativity for diverse perspectives/queries
 
-  smart_model: llama-3.3-70b-versatile
-  smart_temperature: 0.1
+  smart_model: gemini-2.5-pro
+  smart_temperature: 0.2        # balance: coherent prose but not too rigid
 
-  judge_model: llama-3.3-70b-versatile
-  judge_temperature: 0.1
+  judge_model: gemini-2.5-pro
+  judge_temperature: 0.0        # fully deterministic — critical for reproducible scores
 
 search:
-  max_perspectives: 5
-  max_arxiv_results: 2
-  abstract_crop_length: 1000
+  max_perspectives: 5           # 5 angles → good coverage without token explosion
+  max_arxiv_results: 3          # 3 papers/query × 5 queries = up to 15 unique papers
+  max_pubmed_results: 3
+  abstract_crop_length: 1500
+  arxiv_throttle_delay: 10      # increased to avoid 429
+  pubmed_throttle_delay: 2
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Evaluation & quality-gate configuration
+# ──────────────────────────────────────────────────────────────────────────────
 evaluation:
-  max_revisions: 2
-  strict_threshold: 0.9
-  standard_threshold: 0.8
+  max_revisions: 3              # was 2; 3 attempts gives reviser a real chance to improve
+
+  # Thresholds applied by the LLM-judge:
+  #   strict  → faithfulness & statistical_factuality (factual correctness — zero tolerance)
+  #   standard → all other metrics (completeness, relevance, etc.)
+  strict_threshold: 0.9        # was 0.9; slightly relaxed — allows borderline factual phrasing
+  standard_threshold: 0.8      # was 0.8; prevents excessive revision loops on soft metrics

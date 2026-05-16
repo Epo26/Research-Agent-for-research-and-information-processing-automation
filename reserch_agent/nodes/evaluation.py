@@ -2,8 +2,9 @@ import mlflow
 import logging
 from ..llm import llm_smart
 from ..models import AgentState
-from ..config import  CONFIG
+from ..config import CONFIG
 from ..metrics.evaluators import evaluate_all_metrics_super_judge
+from ..utils import update_token_usage
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,12 @@ def evaluator_node(state: AgentState):
     strict_thr = CONFIG["evaluation"]["strict_threshold"]
     std_thr = CONFIG["evaluation"]["standard_threshold"]
 
-    results = evaluate_all_metrics_super_judge(llm_smart, sources, draft, topic)
+    results, response = evaluate_all_metrics_super_judge(llm_smart, sources, draft, topic)
+    
+    # Update tokens
+    token_updates = {}
+    if response:
+        token_updates = update_token_usage(state, response, "judge")
 
     feedback = []
     for metric_name, data in results.items():
@@ -40,20 +46,23 @@ def evaluator_node(state: AgentState):
             return {
                 "evaluation_feedback": final_feedback,
                 "revision_count": next_revision,
-                "final_report": draft
+                "final_report": draft,
+                **token_updates
             }
 
         logger.info("Report failed some metrics. Sending to Reviser...")
         return {
             "evaluation_feedback": final_feedback,
-            "revision_count": next_revision
+            "revision_count": next_revision,
+            **token_updates
         }
     else:
         logger.info(" Report passed all tests!")
         return {
             "evaluation_feedback": "",
-            "revision_count": revision + 1,
-            "final_report": draft
+            "revision_count": revision,
+            "final_report": draft,
+            **token_updates
         }
 
 
@@ -63,7 +72,7 @@ def check_quality(state: AgentState):
 
 
     if revisions >= CONFIG["evaluation"]["max_revisions"]:
-        logger.info("🛑 Limit of tries is reached. Final answer:")
+        logger.info("Limit of tries is reached. Final answer.")
         return "end_process"
 
     if feedback == "":
